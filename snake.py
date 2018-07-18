@@ -9,23 +9,32 @@ gd = pg.display
 
 width = 800
 height = 600
+blockSize = 20
+fps = 10
+# direction = up - 1, down - 2, left - 3, right - 4
+direction = 4
 
 screen = gd.set_mode((width, height))
 gd.set_caption("PySnake")
 clock = pg.time.Clock()
 
-blockSize = 20
-
 font = pg.font.SysFont(None, 30)
-#img = pg.image.load('image.ext')
+
+imgHead = pg.image.load('head.png')
+imgTail = pg.image.load('tail.png')
+body = pg.image.load('body.png')
+apple = pg.image.load('apple.png')
+
+head = imgHead
+tail = pg.transform.rotate(imgTail, -90)
 
 white = (255, 255, 255)
 black = (0, 0, 0)
 red = (255, 0, 0)
-green = (0, 255, 0)
+green = (14,209,69) #(0, 255, 0)
 blue = (0, 0, 255)
 
-snakeList = [(200, 200), (190, 200), (180, 200)]
+snakeList = []
 
 screen.fill(white)
 
@@ -36,29 +45,60 @@ def clearScreen():
 
 
 def drawSnake():
-    for x, y in snakeList:
-        pg.draw.rect(screen, green, [x, y, blockSize, blockSize])
+    screen.blit(head, snakeList[0])
 
+    for pos in snakeList[1:-1]:
+        #pg.draw.rect(screen, green, [x, y, blockSize, blockSize])
+        screen.blit(body, pos)
 
-def moveSnake(x, y):
+    if snakeList[-1][0] < snakeList[-2][0]:
+        tail = pg.transform.rotate(imgTail, -90)
+    elif snakeList[-1][0] > snakeList[-2][0]:
+        tail = pg.transform.rotate(imgTail, 90)
+    elif snakeList[-1][1] > snakeList[-2][1]:
+        tail = imgTail
+    else:
+    	tail = pg.transform.rotate(imgTail, 180)
+    screen.blit(tail,snakeList[-1])
+
+def moveSnake(direction):
+    global head
+
+    x,y = snakeList[0]
+
+    if direction == 1: #up
+        y -= blockSize
+        head = imgHead
+    elif direction == 2: #down
+        y += blockSize
+        head = pg.transform.rotate(imgHead,180)
+    elif direction == 3: #left
+        x -= blockSize
+        head = pg.transform.rotate(imgHead, 90)
+    elif direction == 4: #right
+        x += blockSize
+        head = pg.transform.rotate(imgHead, -90)
+
     prev = (x, y)
     for x in range(len(snakeList)):
         prev, snakeList[x] = snakeList[x], prev
 
 
 def snakeColide():
-    return snakeList[0] in snakeList[1:]
+	x,y = snakeList[0]
+	# checking if the snake hit any wall, went out of screen, or hit itself
+	return x < 0 or x > width or y < 0 or y > height or snakeList[0] in snakeList[1:]
 
 
-def messageToScreen(msg, color, x=(width-100)/2, y=(height-25)/2, centered = False):
+def messageToScreen(msg, color, x=(width-100)/2, y=(height-25)/2, centered = False, displaceX = 0, displaceY = 0):
     # Message, antialising, color
     txt = font.render(msg, True, color)
     if centered:
     	rect = txt.get_rect()
-    	rect.center = (width/2), (height/2)
+    	rect.center = (width/2)+displaceX, (height/2)+displaceY
     	screen.blit(txt, rect)
     else:
-    	screen.blit(txt, [x, y])
+    	screen.blit(txt, [x+displaceX, y+displaceY])
     gd.update()
 
 
@@ -74,20 +114,34 @@ def genFood():
 
 
 def gameOverMessage():
-    messageToScreen("Game Over!", red, centered = True)
-    time.sleep(3)
+    messageToScreen("Game Over!", red, centered = True, displaceY = -25)
+    messageToScreen("Press C to Continue playing or Q to Quit.", black, centered = True, displaceY = 25)
 
+def checkFood():
+    global food
+    global fps
+
+    x, y = snakeList[0]
+    if snakeList[0] == food:
+        snakeList.append(snakeList[-1])
+        if len(snakeList)%10 == 0:
+            fps = min(fps + 2, 60)
+        food = genFood()
+
+
+def reset():
+    global food
+    global snakeList
+    global fps
+    global direction
+
+    food = genFood()
+    snakeList = [(200, 200), (190, 200), (180, 200)]
+    fps = 10
+    direction = 4
 
 def gameLoop():
-    fps = 10
-
-    leadX = snakeList[0][0]
-    leadY = snakeList[0][1]
-
-    foodX, foodY = genFood()
-
-    # direction = up - 1, down - 2, left - 3, right - 4
-    direction = 4
+    global direction
 
     running = True
     gameOver = False
@@ -96,8 +150,22 @@ def gameLoop():
 
     while running:
 
-        if gameOver:
-            clearScreen()
+        while gameOver:
+            gameOverMessage()
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    running = False
+                elif event.type == pg.KEYDOWN:
+                    if event.key == pg.K_ESCAPE or event.key == pg.K_q:
+                        running = False
+                        gameOver = False
+                        reset()
+                    elif event.key == pg.K_c:
+                        reset()
+                        gameOver = False
+        
+        if not running:
+            continue
 
         for event in pg.event.get():
             if event.type == pg.QUIT:
@@ -129,62 +197,30 @@ def gameLoop():
         if pause:
         	continue
 
-        if direction == 1:
-            leadY -= blockSize
-        elif direction == 2:
-            leadY += blockSize
-        elif direction == 3:
-            leadX -= blockSize
-        elif direction == 4:
-            leadX += blockSize
-
-        moveSnake(leadX, leadY)
-
-        # checking if the snake hit the main walls, going out of screen, or hit itself
-        if leadX < 0 or leadX > width or leadY < 0 or leadY > height or snakeColide():
-            gameOverMessage()
+        moveSnake(direction)
+        if snakeColide():
             gameOver = True
+            turbo = False
 
-        screen.fill(white)
+        if not gameOver:
+        	screen.fill(white)
 
-        # draw thew apple/food
-        # screen.fill(red, [200,200,10,10])
-        pg.draw.rect(screen, red, [foodX, foodY, blockSize, blockSize])
+	        # draw the apple/food
+	        #pg.draw.rect(screen, red, [food[0], food[1], blockSize, blockSize])
+	        screen.blit(apple, food)
 
-        # draw the snake
-        drawSnake()
-
-        gd.update()
-
-        if leadX == foodX and leadY == foodY:
-            snakeList.append(snakeList[-1])
-            if len(snakeList)%10 == 0:
-            	fps += 5
-            	fps = min(fps,60)
-
-            foodX, foodY = genFood()
+	        # draw the snake
+	        drawSnake()
+	        checkFood()
+	        gd.update()
 
         speed = fps
         if turbo:
         	speed = 60
         clock.tick(speed)
 
-        while gameOver:
-            messageToScreen("Press Q to Quit or C to Continue playing.", red, centered = True)
-
-            for event in pg.event.get():
-                if event.type == pg.QUIT:
-                    running = False
-                elif event.type == pg.KEYDOWN:
-                    if event.key == pg.K_ESCAPE or event.key == pg.K_q:
-                        running = False
-                        gameOver = False
-                        leadX, leadY = 200, 200
-                    elif event.key == pg.K_c:
-                        leadX, leadY = 200, 200
-                        gameOver = False
-
     pg.quit()
     quit()
 
+reset()
 gameLoop()
