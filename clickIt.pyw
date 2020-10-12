@@ -1,3 +1,4 @@
+#pip install pywin32
 import ctypes
 import win32api
 import time
